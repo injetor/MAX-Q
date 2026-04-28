@@ -316,7 +316,123 @@ local function BuildElements(parentContainer)
         local lbl = create("TextLabel", { Size = UDim2.new(1, -24, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = text, TextColor3 = Theme.TextDark, TextSize = 12, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Center, Parent = lf })
         return { Set = function(self, newText) lbl.Text = newText end }
     end
-    
+
+    function Elements:CreateParagraph(title, content)
+        local pf = create("Frame", { Size = UDim2.new(1, 0, 0, 0), BackgroundColor3 = Theme.Secondary, Parent = parentContainer })
+        addCorner(pf, 4) addStroke(pf, Theme.Border, 1)
+        create("TextLabel", { Size = UDim2.new(1, -24, 0, 20), Position = UDim2.new(0, 12, 0, 8), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 13, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left, Parent = pf })
+        local cont = create("TextLabel", { Size = UDim2.new(1, -24, 0, 0), Position = UDim2.new(0, 12, 0, 28), BackgroundTransparency = 1, Text = content, TextColor3 = Theme.TextDark, TextSize = 11, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, AutomaticSize = Enum.AutomaticSize.Y, Parent = pf })
+        task.delay(0.1, function() pf.Size = UDim2.new(1, 0, 0, cont.AbsoluteSize.Y + 40) end)
+        cont:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() pf.Size = UDim2.new(1, 0, 0, cont.AbsoluteSize.Y + 40) end)
+        return { Set = function(self, newTitle, newContent) if newTitle then pf:FindFirstChildOfClass("TextLabel").Text = newTitle end if newContent then cont.Text = newContent end end }
+    end
+
+    function Elements:CreateMultiDropdown(title, optionsList, defaultList, callback, tooltip)
+        local selected = {}
+        for _, v in ipairs(defaultList or {}) do selected[v] = true end
+        local df = create("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Secondary, Parent = parentContainer, ClipsDescendants = true })
+        addCorner(df, 4) addStroke(df, Theme.Border, 1) attachTooltip(df, tooltip)
+        create("TextLabel", { Size = UDim2.new(1, -140, 0, 36), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Parent = df })
+        local function getSelectedStr() local t = {} for k, v in pairs(selected) do if v then table.insert(t, tostring(k)) end end if #t == 0 then return "None" end return table.concat(t, ", ") end
+        local dropBtn = create("TextButton", { Size = UDim2.new(0, 120, 0, 24), Position = UDim2.new(1, -132, 0, 6), BackgroundColor3 = Theme.Tertiary, Text = getSelectedStr(), TextColor3 = Theme.Text, TextSize = 11, Font = Enum.Font.Gotham, TextTruncate = Enum.TextTruncate.AtEnd, Parent = df })
+        addCorner(dropBtn, 4) addStroke(dropBtn, Theme.Border, 1)
+        local listFrame = create("ScrollingFrame", { Size = UDim2.new(1, -24, 0, 0), Position = UDim2.new(0, 12, 0, 40), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y, Parent = df })
+        create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), Parent = listFrame })
+        local open = false
+        local function toggleDrop()
+            open = not open
+            tween(df, {Size = open and UDim2.new(1, 0, 0, 160) or UDim2.new(1, 0, 0, 36)}, 0.25)
+            tween(listFrame, {Size = open and UDim2.new(1, -24, 0, 110) or UDim2.new(1, -24, 0, 0)}, 0.25)
+        end
+        dropBtn.MouseButton1Click:Connect(toggleDrop)
+        local function populate(opts)
+            for _, child in pairs(listFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+            for _, opt in ipairs(opts) do
+                local optF = create("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.Background, Parent = listFrame }) addCorner(optF, 4)
+                local btn = create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "   " .. tostring(opt), TextColor3 = Theme.TextDark, TextSize = 12, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Parent = optF })
+                local box = create("Frame", { Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(1, -20, 0.5, -7), BackgroundColor3 = selected[opt] and Theme.Success or Theme.Tertiary, Parent = optF })
+                addCorner(box, 3) addStroke(box, Theme.Border, 1)
+                local function upd() box.BackgroundColor3 = selected[opt] and Theme.Success or Theme.Tertiary btn.TextColor3 = selected[opt] and Theme.Text or Theme.TextDark end
+                upd()
+                btn.MouseButton1Click:Connect(function() selected[opt] = not selected[opt] upd() dropBtn.Text = getSelectedStr() if callback then local t = {} for k, v in pairs(selected) do if v then table.insert(t, k) end end callback(t) end end)
+            end
+        end
+        if optionsList then populate(optionsList) end
+        if callback then task.spawn(function() local t = {} for k, v in pairs(selected) do if v then table.insert(t, k) end end callback(t) end) end
+        return { Refresh = function(self, newOpts) populate(newOpts) end, Value = function() local t = {} for k, v in pairs(selected) do if v then table.insert(t, k) end end return t end }
+    end
+
+    function Elements:CreateSearchableDropdown(title, optionsList, default, callback, tooltip)
+        local selected = default or (optionsList and optionsList[1]) or ""
+        local df = create("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Secondary, Parent = parentContainer, ClipsDescendants = true })
+        addCorner(df, 4) addStroke(df, Theme.Border, 1) attachTooltip(df, tooltip)
+        create("TextLabel", { Size = UDim2.new(1, -120, 0, 36), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Parent = df })
+        local dropBtn = create("TextButton", { Size = UDim2.new(0, 100, 0, 24), Position = UDim2.new(1, -112, 0, 6), BackgroundColor3 = Theme.Tertiary, Text = tostring(selected), TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.Gotham, Parent = df })
+        addCorner(dropBtn, 4) addStroke(dropBtn, Theme.Border, 1)
+        local searchBox = create("TextBox", { Size = UDim2.new(1, -24, 0, 26), Position = UDim2.new(0, 12, 0, 40), BackgroundColor3 = Theme.Tertiary, Text = "", PlaceholderText = "Search...", TextColor3 = Theme.Text, TextSize = 11, Font = Enum.Font.Gotham, Parent = df })
+        addCorner(searchBox, 4) addStroke(searchBox, Theme.Border, 1)
+        local listFrame = create("ScrollingFrame", { Size = UDim2.new(1, -24, 0, 0), Position = UDim2.new(0, 12, 0, 72), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y, Parent = df })
+        create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), Parent = listFrame })
+        local open = false
+        local function toggleDrop()
+            open = not open
+            tween(df, {Size = open and UDim2.new(1, 0, 0, 180) or UDim2.new(1, 0, 0, 36)}, 0.25)
+            tween(listFrame, {Size = open and UDim2.new(1, -24, 0, 98) or UDim2.new(1, -24, 0, 0)}, 0.25)
+            if not open then searchBox.Text = "" end
+        end
+        dropBtn.MouseButton1Click:Connect(toggleDrop)
+        local optBtns = {}
+        local function populate(opts)
+            for _, child in pairs(listFrame:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+            optBtns = {}
+            for _, opt in ipairs(opts) do
+                local optBtn = create("TextButton", { Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.Background, Text = tostring(opt), TextColor3 = Theme.TextDark, TextSize = 12, Font = Enum.Font.Gotham, Parent = listFrame })
+                addCorner(optBtn, 4)
+                optBtn.MouseEnter:Connect(function() tween(optBtn, {BackgroundColor3 = Theme.Tertiary}, 0.15) end)
+                optBtn.MouseLeave:Connect(function() tween(optBtn, {BackgroundColor3 = Theme.Background}, 0.15) end)
+                optBtn.MouseButton1Click:Connect(function() selected = opt dropBtn.Text = tostring(opt) toggleDrop() if callback then callback(selected) end end)
+                table.insert(optBtns, {btn = optBtn, txt = string.lower(tostring(opt))})
+            end
+        end
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            local q = string.lower(searchBox.Text)
+            for _, v in ipairs(optBtns) do v.btn.Visible = (q == "" or string.find(v.txt, q)) ~= nil end
+        end)
+        if optionsList then populate(optionsList) end
+        if callback then task.spawn(function() callback(selected) end) end
+        return { Refresh = function(self, newOpts) populate(newOpts) end, Set = function(self, val) selected = val dropBtn.Text = tostring(val) if callback then callback(selected) end end, Value = function() return selected end }
+    end
+
+    function Elements:CreateColorPicker(title, defaultColor, callback, tooltip)
+        local color = defaultColor or Color3.fromRGB(255, 255, 255)
+        local cf = create("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Secondary, Parent = parentContainer, ClipsDescendants = true })
+        addCorner(cf, 4) addStroke(cf, Theme.Border, 1) attachTooltip(cf, tooltip)
+        create("TextLabel", { Size = UDim2.new(1, -60, 0, 36), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Parent = cf })
+        local colorBtn = create("TextButton", { Size = UDim2.new(0, 30, 0, 20), Position = UDim2.new(1, -42, 0, 8), BackgroundColor3 = color, Text = "", Parent = cf })
+        addCorner(colorBtn, 4) addStroke(colorBtn, Theme.Border, 1)
+        local palette = create("Frame", { Size = UDim2.new(1, -24, 0, 0), Position = UDim2.new(0, 12, 0, 40), BackgroundTransparency = 1, Parent = cf })
+        create("UIGridLayout", { CellSize = UDim2.new(0, 24, 0, 24), CellPadding = UDim2.new(0, 6, 0, 6), Parent = palette })
+        local colors = { Color3.fromRGB(255,0,0), Color3.fromRGB(0,255,0), Color3.fromRGB(0,0,255), Color3.fromRGB(255,255,0), Color3.fromRGB(255,0,255), Color3.fromRGB(0,255,255), Color3.fromRGB(255,255,255), Color3.fromRGB(0,0,0), Theme.Accent }
+        local open = false
+        colorBtn.MouseButton1Click:Connect(function()
+            open = not open
+            tween(cf, {Size = open and UDim2.new(1, 0, 0, 80) or UDim2.new(1, 0, 0, 36)}, 0.25)
+            tween(palette, {Size = open and UDim2.new(1, -24, 0, 30) or UDim2.new(1, -24, 0, 0)}, 0.25)
+        end)
+        for _, c in ipairs(colors) do
+            local pb = create("TextButton", { BackgroundColor3 = c, Text = "", Parent = palette })
+            addCorner(pb, 4) addStroke(pb, Theme.Border, 1)
+            pb.MouseButton1Click:Connect(function()
+                color = c colorBtn.BackgroundColor3 = color open = false
+                tween(cf, {Size = UDim2.new(1, 0, 0, 36)}, 0.2)
+                tween(palette, {Size = UDim2.new(1, -24, 0, 0)}, 0.2)
+                if callback then callback(color) end
+            end)
+        end
+        if callback then task.spawn(function() callback(color) end) end
+        return { Set = function(self, newCol) color = newCol colorBtn.BackgroundColor3 = color if callback then callback(color) end end, Value = function() return color end }
+    end
+
     return Elements
 end
 
